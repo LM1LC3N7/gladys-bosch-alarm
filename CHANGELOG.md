@@ -12,44 +12,41 @@ the notes of the version's GitHub Release.
 
 ### Added
 
-- A working example of scene triggers, scene actions and dashboard widgets
-  (Gladys 5.1.0 or later).
-- `CHANGELOG.md`, rolled by the Release workflow.
-- A GitHub Release for every version, with its changelog section as notes: the
-  Gladys Supervision page links each version to the repository's releases.
-- CI runs the tests on Node 22 and 24, and builds the Docker image.
-- Dependabot keeps the npm dependencies and the GitHub Actions up to date.
-- `SECURITY.md` (how to report a vulnerability) and `CLAUDE.md` (project rules
-  for contributors and coding assistants).
-- Manifest tests: `version` matches `package.json`, `docker_image` is tagged
-  with it, descriptions hold 10 to 100 characters, placeholders are
-  multi-language objects.
-- The latitude and longitude fields show an example value as placeholder.
+- Local connection to Bosch Solution, AMAX, B Series, G Series and GV4 alarm
+  panels over the Mode 2 automation protocol (TLS, port 7700), with the
+  protocol of bosch-alarm-mode2 0.4.11: "what are you", the login of each
+  family, the configured areas, points and outputs and their names, their
+  status, the alarm memory, the faults, the subscription (or polling).
+- One device per area: read-only state (disarmed, arming, entry delay, armed
+  away, armed stay), armed, ready to arm, alarm in progress, fire alarm
+  memory, and arm away / arm stay / disarm push buttons (never a switch).
+- One device per point: open or closed, as an opening, motion, smoke or leak
+  sensor (configurable kind).
+- One device per output: state, and turn on / turn off push buttons.
+- The panel: link, trouble, AC power failure, battery low or missing.
+- Scene triggers `alarm_triggered` (point, fire), `armed`, `disarmed`; scene
+  actions `arm` and `disarm`; "Test the connection" and "Allow a new try of
+  the code" buttons.
+- State and scene event budgets under the Gladys limits.
+- French and English names, messages and guides.
 
-### Changed
+### Security
 
-- Node.js 22 or later is required (Node 20 is end-of-life).
-- Integration SDK 0.15.0. The tests now run against the fake Gladys of the
-  SDK, which refuses the payloads Gladys refuses.
-- The refresh interval is one minute minimum, the fastest Gladys polls a
-  device. The plug's power is only sent when it changes, and every 30
-  minutes otherwise.
+- Arming is never blocked by an option; disarming and the outputs are off by
+  default, each behind its own option; going from armed away to armed stay
+  needs the disarm option. The options are read when the command is asked,
+  again after the fresh read, and once more right before the write.
+- Every command decided on the state read from the panel just before it,
+  one at a time, sent within 3.5 s or not at all; a command that may have
+  left is reported "sent, without confirmation" and read again; an arming
+  withdraws a disarm of the same area still waiting.
+- A code refused by the panel at login stops the integration, kept across
+  restarts in `/data` (the date only, never a code); lifted by a new code or
+  by "Allow a new try of the code" (one try per click). The codes are never
+  logged.
+- One connection only, at least 5 s between two, spaced reconnections (10 s
+  to 5 min, at least 60 s when the panel has no free connection); one
+  request in flight, any answer out of order resets the connection; bounded
+  frames, names and pages, linear parsing.
 
-### Fixed
-
-- Gladys refused the devices of the Discovery tab: the weather station and
-  the plug declared their poll frequency in seconds instead of one of the
-  values Gladys accepts, and were never polled. They now poll every minute,
-  and the readings follow the refresh interval of the configuration.
-
-- The release commit no longer fails `npm run format:check`: the Release
-  workflow updates the manifest `version` and `docker_image` in place instead
-  of re-printing the whole file with `jq`.
-- The integration can write to `/data`: the image creates the directory owned
-  by the `node` user, a new Docker volume was owned by root.
-- A sub-container running the integration's own image follows it to the new
-  tag at each release, as well as in the manifest of the build summary: it kept
-  the previous tag, which may not exist on the registry. Sub-containers on a
-  third-party image (a broker, a database...) keep theirs.
-
-[Unreleased]: https://github.com/GladysAssistant/integration-template-js/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/commits/main

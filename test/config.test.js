@@ -1,33 +1,73 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeConfig, DEFAULT_CONFIG } from '../src/config.js';
+import {
+  DEFAULTS,
+  codesKey,
+  normalizeConfig,
+  parseHost,
+  parsePointKinds,
+  placeKey,
+  sessionKey,
+} from '../src/config.js';
 
-test('normalizeConfig returns the defaults when called with no argument', () => {
-  assert.deepEqual(normalizeConfig(), DEFAULT_CONFIG);
+test('defaults: disarm and outputs off, port 7700', () => {
+  const config = normalizeConfig({});
+  assert.equal(config.port, 7700);
+  assert.equal(config.allowDisarm, false);
+  assert.equal(config.allowOutputs, false);
+  assert.equal(config.language, 'fr');
+  assert.equal(DEFAULTS.allow_disarm, false);
+  // Only a real boolean switches an option on.
+  assert.equal(normalizeConfig({ allow_disarm: 'true' }).allowDisarm, false);
+  assert.equal(normalizeConfig({ allow_outputs: 1 }).allowOutputs, false);
 });
 
-test('normalizeConfig keeps user values over the defaults', () => {
-  const config = normalizeConfig({ latitude: 45.5, longitude: -73.6, unit: 'fahrenheit' });
-  assert.equal(config.latitude, 45.5);
-  assert.equal(config.longitude, -73.6);
-  assert.equal(config.unit, 'fahrenheit');
+test('the address, with or without a port', () => {
+  assert.deepEqual(parseHost('192.168.1.40'), { host: '192.168.1.40', port: undefined });
+  assert.deepEqual(parseHost('tls://panel.lan:7701/'), { host: 'panel.lan', port: 7701 });
+  assert.deepEqual(parseHost('[fe80::1]:7700'), { host: 'fe80::1', port: 7700 });
+  assert.equal(parseHost('a b').host, '');
+  assert.equal(normalizeConfig({ host: 'p:7800', port: 7700 }).port, 7800);
 });
 
-test('normalizeConfig coerces numeric strings coming from a form', () => {
-  const config = normalizeConfig({ latitude: '48.8', longitude: '2.3', poll_frequency: '600' });
-  assert.equal(config.latitude, 48.8);
-  assert.equal(config.longitude, 2.3);
-  assert.equal(config.poll_frequency, 600);
-  assert.equal(typeof config.poll_frequency, 'number');
+test('codes: format checked, never guessed', () => {
+  assert.equal(normalizeConfig({ automation_code: ' Ab-12_x ' }).automationCode, 'Ab-12_x');
+  const spaced = normalizeConfig({ automation_code: 'a b' });
+  assert.equal(spaced.automationCode, '');
+  assert.equal(spaced.automationCodeInvalid, true);
+  assert.equal(normalizeConfig({ automation_code: 'x'.repeat(33) }).automationCodeInvalid, true);
+  assert.equal(normalizeConfig({ user_code: '12345678' }).userCode, '12345678');
+  assert.equal(normalizeConfig({ user_code: '123456789' }).userCodeInvalid, true);
+  assert.equal(normalizeConfig({ user_code: '12a4' }).userCodeInvalid, true);
+  assert.equal(normalizeConfig({}).userCodeInvalid, false);
 });
 
-test('normalizeConfig falls back to the default for a missing numeric field', () => {
-  const config = normalizeConfig({ unit: 'celsius' });
-  assert.equal(config.poll_frequency, DEFAULT_CONFIG.poll_frequency);
+test('point kinds: ranges, separators, errors reported', () => {
+  const { kinds, errors } = parsePointKinds('7:motion; 9-10 = smoke\n12:LEAK, 3, 4:fire, 0:motion');
+  assert.deepEqual(
+    [...kinds],
+    [
+      [7, 'motion'],
+      [9, 'smoke'],
+      [10, 'smoke'],
+      [12, 'leak'],
+    ],
+  );
+  assert.deepEqual(errors, ['3', '4:fire', '0:motion']);
+  // No prototype pollution through a key.
+  assert.equal(parsePointKinds('__proto__:motion').kinds.size, 0);
 });
 
-test('GLADYS_PREFER_LOCAL defaults to true and only an explicit false disables it', () => {
-  assert.equal(normalizeConfig().GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: true }).GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: false }).GLADYS_PREFER_LOCAL, false);
+test('keys: the codes reconnect, the address is the place', () => {
+  const a = normalizeConfig({ host: 'p', automation_code: 'one' });
+  const b = normalizeConfig({ host: 'p', automation_code: 'two' });
+  assert.notEqual(sessionKey(a), sessionKey(b));
+  assert.notEqual(codesKey(a), codesKey(b));
+  assert.equal(placeKey(a), placeKey(b));
+  assert.doesNotMatch(placeKey(a), /one/);
+  assert.equal(
+    sessionKey(normalizeConfig({ host: 'p', allow_disarm: true })),
+    sessionKey(normalizeConfig({ host: 'p' })),
+    'an option applies without reconnecting',
+  );
 });

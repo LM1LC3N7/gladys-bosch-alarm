@@ -1,177 +1,1574 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Bosch Alarm",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Bosch Solution, AMAX, B and G Series alarm panels, locally (Mode 2).",
+    "fr": "Centrales d’alarme Bosch Solution, AMAX, séries B et G, en local (Mode 2)."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-bosch-alarm:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-bosch-alarm/main/cover.png",
+  "categories": ["security"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your Bosch alarm panel",
+        "fr": "Votre centrale d’alarme Bosch"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "For Bosch Solution 2000/3000/4000, AMAX 2100/3000/4000, B Series (B3512 to B6512), G Series (B8512G, B9512G) and GV4 panels with their network module, on your network, without any cloud, through the \"Mode 2\" automation protocol: the state of each area (disarmed, arming, armed away or stay, entry delay, alarm, fire alarm memory), its points (open or closed), the outputs, the panel troubles, arm and disarm buttons, scene triggers. Enable the automation (Mode 2) on the panel with Bosch's installer software (A-Link Plus, RPS). Never tested on a real panel. Unofficial, not affiliated with Bosch.",
+        "fr": "Pour les centrales Bosch Solution 2000/3000/4000, AMAX 2100/3000/4000, séries B (B3512 à B6512), G (B8512G, B9512G) et GV4 avec leur module réseau, sur votre réseau, sans cloud, par le protocole d’automatisation « Mode 2 » : l’état de chaque secteur (désarmé, armement en cours, armé total ou partiel, temporisation d’entrée, alarme, mémoire d’alarme incendie), ses points (ouverts ou fermés), les sorties, les défauts de la centrale, des boutons d’armement et de désarmement, des déclencheurs de scène. Activez l’automatisation (Mode 2) sur la centrale avec le logiciel d’installation Bosch (A-Link Plus, RPS). Jamais testé sur une vraie centrale. Non officiel, sans lien avec Bosch."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-bosch-alarm/blob/main/docs/fr.md",
+          "label": {
+            "en": "Guide (French)",
+            "fr": "Guide (français)"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-bosch-alarm/blob/main/docs/en.md",
+          "label": {
+            "en": "Guide (English)",
+            "fr": "Guide (anglais)"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "host",
+      "type": "string",
+      "label": {
+        "en": "Address of the panel",
+        "fr": "Adresse de la centrale"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "description": {
+        "en": "The IP address of its network module (give it a fixed address in your router).",
+        "fr": "L’adresse IP de son module réseau (donnez-lui une adresse fixe dans votre box)."
+      },
+      "placeholder": {
+        "en": "192.168.1.60",
+        "fr": "192.168.1.60"
+      },
+      "required": true
     },
     {
-      "key": "longitude",
+      "key": "port",
       "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+      "label": {
+        "en": "Automation port",
+        "fr": "Port d’automatisation"
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "description": {
+        "en": "7700 unless your installer changed it.",
+        "fr": "Sauf changement par votre installateur : 7700."
+      },
+      "required": false,
+      "default": 7700,
+      "min": 1,
+      "max": 65535
     },
     {
-      "key": "unit",
+      "key": "automation_code",
+      "type": "secret",
+      "label": {
+        "en": "Automation code",
+        "fr": "Code d’automatisation"
+      },
+      "description": {
+        "en": "B, G Series, GV4 and AMAX panels: the automation passcode set by your installer (not used by Solution panels). It is sent to the panel at each login, over TLS without a check of the panel's certificate. A code refused by the panel is never sent again by itself (\"Allow a new try of the code\" button). Kept by Gladys in its database, never shown again, sent only to the panel, never in the logs.",
+        "fr": "Centrales des séries B, G, GV4 et AMAX : le code d’automatisation réglé par votre installateur (inutile pour les centrales Solution). Il est envoyé à la centrale à chaque connexion, par TLS sans vérification du certificat de la centrale. Un code refusé par la centrale n’est jamais renvoyé de lui-même (bouton « Autoriser un nouvel essai du code »). Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à la centrale, jamais dans les journaux."
+      },
+      "required": false
+    },
+    {
+      "key": "user_code",
+      "type": "secret",
+      "label": {
+        "en": "User code (Solution) or installer code (AMAX)",
+        "fr": "Code utilisateur (Solution) ou code installateur (AMAX)"
+      },
+      "description": {
+        "en": "Solution panels: the code of a user (up to 8 digits) with the rights Gladys needs. AMAX panels: the installer code (up to 8 digits), with the automation code above. Not used by B and G Series. Kept by Gladys in its database, never shown again, sent only to the panel, never in the logs.",
+        "fr": "Centrales Solution : le code d’un utilisateur (8 chiffres au plus) avec les droits utiles à Gladys. Centrales AMAX : le code installateur (8 chiffres au plus), avec le code d’automatisation ci-dessus. Inutile pour les séries B et G. Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à la centrale, jamais dans les journaux."
+      },
+      "required": false
+    },
+    {
+      "key": "point_kinds",
+      "type": "string",
+      "label": {
+        "en": "Kind of the points",
+        "fr": "Type des points"
+      },
+      "description": {
+        "en": "Optional: points that are not openings, e.g. \"7:motion, 9-10:smoke, 12:leak\" (opening, motion, smoke, leak). Every other point shows as an opening.",
+        "fr": "Facultatif : les points qui ne sont pas des ouvertures, par ex. « 7:motion, 9-10:smoke, 12:leak » (opening ouverture, motion mouvement, smoke fumée, leak fuite). Les autres points sont des ouvertures."
+      },
+      "placeholder": {
+        "en": "7:motion, 9:smoke",
+        "fr": "7:motion, 9:smoke"
+      },
+      "required": false
+    },
+    {
+      "key": "safety",
+      "type": "section",
+      "label": {
+        "en": "Safety",
+        "fr": "Sécurité"
+      },
+      "description": {
+        "en": "Anyone who can control the devices in Gladys (dashboard, scenes, the Gladys app) can use the alarm through this integration. Arming is always allowed: arming while someone is inside (a scene, a mistake) may raise a false alarm, sirens and a call of your alarm monitoring company. Disarming and the outputs (which may drive a siren, a gate or a lock) are off by default, each behind its own option: allow them only if your Gladys is well protected. Every command is written in the integration logs; the codes never are.",
+        "fr": "Toute personne pouvant piloter les appareils dans Gladys (tableau de bord, scènes, application Gladys) peut agir sur l’alarme par cette intégration. L’armement est toujours permis : armer alors que quelqu’un est à l’intérieur (une scène, une erreur) peut déclencher une fausse alarme, les sirènes et un appel de votre télésurveillance. Le désarmement et les sorties (qui peuvent commander une sirène, un portail ou une serrure) sont désactivés par défaut, chacun derrière sa propre option : ne les autorisez que si votre Gladys est bien protégé. Chaque commande est écrite dans les journaux de l’intégration, jamais les codes."
+      }
+    },
+    {
+      "key": "allow_disarm",
+      "type": "boolean",
+      "label": {
+        "en": "Allow disarming from Gladys",
+        "fr": "Autoriser le désarmement depuis Gladys"
+      },
+      "description": {
+        "en": "Once checked, every Gladys user, every scene and the Gladys mobile app can disarm, without typing any code. Also needed to go from armed away to armed stay (a lower protection).",
+        "fr": "Une fois cochée, tout utilisateur de Gladys, toute scène et l’application mobile Gladys peuvent désarmer, sans saisir aucun code. Nécessaire aussi pour passer d’armé total à armé partiel (une protection plus faible)."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "allow_outputs",
+      "type": "boolean",
+      "label": {
+        "en": "Allow controlling the outputs from Gladys",
+        "fr": "Autoriser le pilotage des sorties depuis Gladys"
+      },
+      "description": {
+        "en": "Turn on / turn off buttons of the outputs. An output may drive a siren, a gate or a lock: check what each one does first.",
+        "fr": "Boutons activer / désactiver des sorties. Une sortie peut commander une sirène, un portail ou une serrure : vérifiez d’abord ce que fait chacune."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "language",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
-      "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
-      ]
-    },
-    {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "label": {
+        "en": "Language of the names",
+        "fr": "Langue des noms"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Used for the names of the devices and features added from now on, and for the area state.",
+        "fr": "Sert aux noms des appareils et fonctionnalités ajoutés désormais, et à l’état des secteurs."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "fr",
+      "options": [
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion"
+      },
       "timeout_seconds": 30
     },
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
+      "key": "allow_code_retry",
+      "label": {
+        "en": "Allow a new try of the code",
+        "fr": "Autoriser un nouvel essai du code"
+      },
+      "timeout_seconds": 10
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "alarm_triggered",
+      "label": {
+        "en": "Bosch alarm triggered",
+        "fr": "Alarme Bosch déclenchée"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "An armed area goes into alarm (intrusion, gas or fire), or a fire alarm is recorded.",
+        "fr": "Un secteur armé passe en alarme (intrusion, gaz ou incendie), ou une alarme incendie est enregistrée."
       },
       "fields": [
         {
-          "key": "device",
+          "key": "area",
           "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          },
           "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
+            {
+              "value": "1",
+              "label": {
+                "en": "1",
+                "fr": "1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "2",
+                "fr": "2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "3",
+                "fr": "3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "4",
+                "fr": "4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "5",
+                "fr": "5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "6",
+                "fr": "6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "7",
+                "fr": "7"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "en": "8",
+                "fr": "8"
+              }
+            },
+            {
+              "value": "9",
+              "label": {
+                "en": "9",
+                "fr": "9"
+              }
+            },
+            {
+              "value": "10",
+              "label": {
+                "en": "10",
+                "fr": "10"
+              }
+            },
+            {
+              "value": "11",
+              "label": {
+                "en": "11",
+                "fr": "11"
+              }
+            },
+            {
+              "value": "12",
+              "label": {
+                "en": "12",
+                "fr": "12"
+              }
+            },
+            {
+              "value": "13",
+              "label": {
+                "en": "13",
+                "fr": "13"
+              }
+            },
+            {
+              "value": "14",
+              "label": {
+                "en": "14",
+                "fr": "14"
+              }
+            },
+            {
+              "value": "15",
+              "label": {
+                "en": "15",
+                "fr": "15"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "en": "16",
+                "fr": "16"
+              }
+            },
+            {
+              "value": "17",
+              "label": {
+                "en": "17",
+                "fr": "17"
+              }
+            },
+            {
+              "value": "18",
+              "label": {
+                "en": "18",
+                "fr": "18"
+              }
+            },
+            {
+              "value": "19",
+              "label": {
+                "en": "19",
+                "fr": "19"
+              }
+            },
+            {
+              "value": "20",
+              "label": {
+                "en": "20",
+                "fr": "20"
+              }
+            },
+            {
+              "value": "21",
+              "label": {
+                "en": "21",
+                "fr": "21"
+              }
+            },
+            {
+              "value": "22",
+              "label": {
+                "en": "22",
+                "fr": "22"
+              }
+            },
+            {
+              "value": "23",
+              "label": {
+                "en": "23",
+                "fr": "23"
+              }
+            },
+            {
+              "value": "24",
+              "label": {
+                "en": "24",
+                "fr": "24"
+              }
+            },
+            {
+              "value": "25",
+              "label": {
+                "en": "25",
+                "fr": "25"
+              }
+            },
+            {
+              "value": "26",
+              "label": {
+                "en": "26",
+                "fr": "26"
+              }
+            },
+            {
+              "value": "27",
+              "label": {
+                "en": "27",
+                "fr": "27"
+              }
+            },
+            {
+              "value": "28",
+              "label": {
+                "en": "28",
+                "fr": "28"
+              }
+            },
+            {
+              "value": "29",
+              "label": {
+                "en": "29",
+                "fr": "29"
+              }
+            },
+            {
+              "value": "30",
+              "label": {
+                "en": "30",
+                "fr": "30"
+              }
+            },
+            {
+              "value": "31",
+              "label": {
+                "en": "31",
+                "fr": "31"
+              }
+            },
+            {
+              "value": "32",
+              "label": {
+                "en": "32",
+                "fr": "32"
+              }
+            }
           ]
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "area",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          }
+        },
+        {
+          "key": "point",
+          "type": "number",
+          "label": {
+            "en": "Point in alarm",
+            "fr": "Point en alarme"
+          }
+        },
+        {
+          "key": "fire",
+          "type": "boolean",
+          "label": {
+            "en": "Fire alarm",
+            "fr": "Alarme incendie"
+          }
+        }
+      ]
+    },
+    {
+      "key": "armed",
+      "label": {
+        "en": "Bosch area armed",
+        "fr": "Secteur Bosch armé"
+      },
+      "description": {
+        "en": "An area was armed (from Gladys, a keypad, a key fob or another app).",
+        "fr": "Un secteur a été armé (depuis Gladys, un clavier, une télécommande ou une autre application)."
+      },
+      "fields": [
+        {
+          "key": "area",
+          "type": "select",
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          },
+          "options": [
+            {
+              "value": "1",
+              "label": {
+                "en": "1",
+                "fr": "1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "2",
+                "fr": "2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "3",
+                "fr": "3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "4",
+                "fr": "4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "5",
+                "fr": "5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "6",
+                "fr": "6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "7",
+                "fr": "7"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "en": "8",
+                "fr": "8"
+              }
+            },
+            {
+              "value": "9",
+              "label": {
+                "en": "9",
+                "fr": "9"
+              }
+            },
+            {
+              "value": "10",
+              "label": {
+                "en": "10",
+                "fr": "10"
+              }
+            },
+            {
+              "value": "11",
+              "label": {
+                "en": "11",
+                "fr": "11"
+              }
+            },
+            {
+              "value": "12",
+              "label": {
+                "en": "12",
+                "fr": "12"
+              }
+            },
+            {
+              "value": "13",
+              "label": {
+                "en": "13",
+                "fr": "13"
+              }
+            },
+            {
+              "value": "14",
+              "label": {
+                "en": "14",
+                "fr": "14"
+              }
+            },
+            {
+              "value": "15",
+              "label": {
+                "en": "15",
+                "fr": "15"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "en": "16",
+                "fr": "16"
+              }
+            },
+            {
+              "value": "17",
+              "label": {
+                "en": "17",
+                "fr": "17"
+              }
+            },
+            {
+              "value": "18",
+              "label": {
+                "en": "18",
+                "fr": "18"
+              }
+            },
+            {
+              "value": "19",
+              "label": {
+                "en": "19",
+                "fr": "19"
+              }
+            },
+            {
+              "value": "20",
+              "label": {
+                "en": "20",
+                "fr": "20"
+              }
+            },
+            {
+              "value": "21",
+              "label": {
+                "en": "21",
+                "fr": "21"
+              }
+            },
+            {
+              "value": "22",
+              "label": {
+                "en": "22",
+                "fr": "22"
+              }
+            },
+            {
+              "value": "23",
+              "label": {
+                "en": "23",
+                "fr": "23"
+              }
+            },
+            {
+              "value": "24",
+              "label": {
+                "en": "24",
+                "fr": "24"
+              }
+            },
+            {
+              "value": "25",
+              "label": {
+                "en": "25",
+                "fr": "25"
+              }
+            },
+            {
+              "value": "26",
+              "label": {
+                "en": "26",
+                "fr": "26"
+              }
+            },
+            {
+              "value": "27",
+              "label": {
+                "en": "27",
+                "fr": "27"
+              }
+            },
+            {
+              "value": "28",
+              "label": {
+                "en": "28",
+                "fr": "28"
+              }
+            },
+            {
+              "value": "29",
+              "label": {
+                "en": "29",
+                "fr": "29"
+              }
+            },
+            {
+              "value": "30",
+              "label": {
+                "en": "30",
+                "fr": "30"
+              }
+            },
+            {
+              "value": "31",
+              "label": {
+                "en": "31",
+                "fr": "31"
+              }
+            },
+            {
+              "value": "32",
+              "label": {
+                "en": "32",
+                "fr": "32"
+              }
+            }
+          ]
+        },
+        {
+          "key": "mode",
+          "type": "select",
+          "label": {
+            "en": "Mode",
+            "fr": "Mode"
+          },
+          "options": [
+            {
+              "value": "armed_away",
+              "label": {
+                "en": "Armed away",
+                "fr": "Armé (total)"
+              }
+            },
+            {
+              "value": "armed_stay",
+              "label": {
+                "en": "Armed stay",
+                "fr": "Armé (partiel)"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "area",
+          "type": "string",
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          }
+        },
+        {
+          "key": "mode",
+          "type": "string",
+          "label": {
+            "en": "Mode",
+            "fr": "Mode"
+          }
+        },
+        {
+          "key": "by_gladys",
+          "type": "boolean",
+          "label": {
+            "en": "Asked by Gladys",
+            "fr": "Demandé par Gladys"
+          }
+        }
+      ]
+    },
+    {
+      "key": "disarmed",
+      "label": {
+        "en": "Bosch area disarmed",
+        "fr": "Secteur Bosch désarmé"
+      },
+      "description": {
+        "en": "An area was disarmed (from Gladys, a keypad, a key fob or another app).",
+        "fr": "Un secteur a été désarmé (depuis Gladys, un clavier, une télécommande ou une autre application)."
+      },
+      "fields": [
+        {
+          "key": "area",
+          "type": "select",
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          },
+          "options": [
+            {
+              "value": "1",
+              "label": {
+                "en": "1",
+                "fr": "1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "2",
+                "fr": "2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "3",
+                "fr": "3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "4",
+                "fr": "4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "5",
+                "fr": "5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "6",
+                "fr": "6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "7",
+                "fr": "7"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "en": "8",
+                "fr": "8"
+              }
+            },
+            {
+              "value": "9",
+              "label": {
+                "en": "9",
+                "fr": "9"
+              }
+            },
+            {
+              "value": "10",
+              "label": {
+                "en": "10",
+                "fr": "10"
+              }
+            },
+            {
+              "value": "11",
+              "label": {
+                "en": "11",
+                "fr": "11"
+              }
+            },
+            {
+              "value": "12",
+              "label": {
+                "en": "12",
+                "fr": "12"
+              }
+            },
+            {
+              "value": "13",
+              "label": {
+                "en": "13",
+                "fr": "13"
+              }
+            },
+            {
+              "value": "14",
+              "label": {
+                "en": "14",
+                "fr": "14"
+              }
+            },
+            {
+              "value": "15",
+              "label": {
+                "en": "15",
+                "fr": "15"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "en": "16",
+                "fr": "16"
+              }
+            },
+            {
+              "value": "17",
+              "label": {
+                "en": "17",
+                "fr": "17"
+              }
+            },
+            {
+              "value": "18",
+              "label": {
+                "en": "18",
+                "fr": "18"
+              }
+            },
+            {
+              "value": "19",
+              "label": {
+                "en": "19",
+                "fr": "19"
+              }
+            },
+            {
+              "value": "20",
+              "label": {
+                "en": "20",
+                "fr": "20"
+              }
+            },
+            {
+              "value": "21",
+              "label": {
+                "en": "21",
+                "fr": "21"
+              }
+            },
+            {
+              "value": "22",
+              "label": {
+                "en": "22",
+                "fr": "22"
+              }
+            },
+            {
+              "value": "23",
+              "label": {
+                "en": "23",
+                "fr": "23"
+              }
+            },
+            {
+              "value": "24",
+              "label": {
+                "en": "24",
+                "fr": "24"
+              }
+            },
+            {
+              "value": "25",
+              "label": {
+                "en": "25",
+                "fr": "25"
+              }
+            },
+            {
+              "value": "26",
+              "label": {
+                "en": "26",
+                "fr": "26"
+              }
+            },
+            {
+              "value": "27",
+              "label": {
+                "en": "27",
+                "fr": "27"
+              }
+            },
+            {
+              "value": "28",
+              "label": {
+                "en": "28",
+                "fr": "28"
+              }
+            },
+            {
+              "value": "29",
+              "label": {
+                "en": "29",
+                "fr": "29"
+              }
+            },
+            {
+              "value": "30",
+              "label": {
+                "en": "30",
+                "fr": "30"
+              }
+            },
+            {
+              "value": "31",
+              "label": {
+                "en": "31",
+                "fr": "31"
+              }
+            },
+            {
+              "value": "32",
+              "label": {
+                "en": "32",
+                "fr": "32"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "area",
+          "type": "string",
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          }
+        },
+        {
+          "key": "by_gladys",
+          "type": "boolean",
+          "label": {
+            "en": "Asked by Gladys",
+            "fr": "Demandé par Gladys"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
+      "key": "arm",
+      "label": {
+        "en": "Arm the Bosch alarm",
+        "fr": "Armer l’alarme Bosch"
+      },
       "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+        "en": "Arms an area, away or stay (always allowed; from away to stay needs the disarm option).",
+        "fr": "Arme un secteur, en total ou en partiel (toujours permis ; de total à partiel demande l’option de désarmement)."
       },
       "timeout_seconds": 15,
       "fields": [
         {
-          "key": "device",
+          "key": "area",
           "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          },
+          "required": false,
+          "default": "1",
+          "options": [
+            {
+              "value": "1",
+              "label": {
+                "en": "1",
+                "fr": "1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "2",
+                "fr": "2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "3",
+                "fr": "3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "4",
+                "fr": "4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "5",
+                "fr": "5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "6",
+                "fr": "6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "7",
+                "fr": "7"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "en": "8",
+                "fr": "8"
+              }
+            },
+            {
+              "value": "9",
+              "label": {
+                "en": "9",
+                "fr": "9"
+              }
+            },
+            {
+              "value": "10",
+              "label": {
+                "en": "10",
+                "fr": "10"
+              }
+            },
+            {
+              "value": "11",
+              "label": {
+                "en": "11",
+                "fr": "11"
+              }
+            },
+            {
+              "value": "12",
+              "label": {
+                "en": "12",
+                "fr": "12"
+              }
+            },
+            {
+              "value": "13",
+              "label": {
+                "en": "13",
+                "fr": "13"
+              }
+            },
+            {
+              "value": "14",
+              "label": {
+                "en": "14",
+                "fr": "14"
+              }
+            },
+            {
+              "value": "15",
+              "label": {
+                "en": "15",
+                "fr": "15"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "en": "16",
+                "fr": "16"
+              }
+            },
+            {
+              "value": "17",
+              "label": {
+                "en": "17",
+                "fr": "17"
+              }
+            },
+            {
+              "value": "18",
+              "label": {
+                "en": "18",
+                "fr": "18"
+              }
+            },
+            {
+              "value": "19",
+              "label": {
+                "en": "19",
+                "fr": "19"
+              }
+            },
+            {
+              "value": "20",
+              "label": {
+                "en": "20",
+                "fr": "20"
+              }
+            },
+            {
+              "value": "21",
+              "label": {
+                "en": "21",
+                "fr": "21"
+              }
+            },
+            {
+              "value": "22",
+              "label": {
+                "en": "22",
+                "fr": "22"
+              }
+            },
+            {
+              "value": "23",
+              "label": {
+                "en": "23",
+                "fr": "23"
+              }
+            },
+            {
+              "value": "24",
+              "label": {
+                "en": "24",
+                "fr": "24"
+              }
+            },
+            {
+              "value": "25",
+              "label": {
+                "en": "25",
+                "fr": "25"
+              }
+            },
+            {
+              "value": "26",
+              "label": {
+                "en": "26",
+                "fr": "26"
+              }
+            },
+            {
+              "value": "27",
+              "label": {
+                "en": "27",
+                "fr": "27"
+              }
+            },
+            {
+              "value": "28",
+              "label": {
+                "en": "28",
+                "fr": "28"
+              }
+            },
+            {
+              "value": "29",
+              "label": {
+                "en": "29",
+                "fr": "29"
+              }
+            },
+            {
+              "value": "30",
+              "label": {
+                "en": "30",
+                "fr": "30"
+              }
+            },
+            {
+              "value": "31",
+              "label": {
+                "en": "31",
+                "fr": "31"
+              }
+            },
+            {
+              "value": "32",
+              "label": {
+                "en": "32",
+                "fr": "32"
+              }
+            }
+          ]
+        },
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "mode",
+          "type": "select",
+          "label": {
+            "en": "Mode",
+            "fr": "Mode"
+          },
+          "required": false,
+          "default": "armed_away",
+          "options": [
+            {
+              "value": "armed_away",
+              "label": {
+                "en": "Armed away",
+                "fr": "Armé (total)"
+              }
+            },
+            {
+              "value": "armed_stay",
+              "label": {
+                "en": "Armed stay",
+                "fr": "Armé (partiel)"
+              }
+            }
+          ]
         }
       ]
-    }
-  ],
-  "widgets": [
+    },
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "disarm",
+      "label": {
+        "en": "Disarm the Bosch alarm",
+        "fr": "Désarmer l’alarme Bosch"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "Disarms an area: off unless allowed in the configuration.",
+        "fr": "Désarme un secteur : désactivé sauf autorisation dans la configuration."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "area",
+          "type": "select",
+          "label": {
+            "en": "Area",
+            "fr": "Secteur"
+          },
+          "required": false,
+          "default": "1",
+          "options": [
+            {
+              "value": "1",
+              "label": {
+                "en": "1",
+                "fr": "1"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "2",
+                "fr": "2"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "3",
+                "fr": "3"
+              }
+            },
+            {
+              "value": "4",
+              "label": {
+                "en": "4",
+                "fr": "4"
+              }
+            },
+            {
+              "value": "5",
+              "label": {
+                "en": "5",
+                "fr": "5"
+              }
+            },
+            {
+              "value": "6",
+              "label": {
+                "en": "6",
+                "fr": "6"
+              }
+            },
+            {
+              "value": "7",
+              "label": {
+                "en": "7",
+                "fr": "7"
+              }
+            },
+            {
+              "value": "8",
+              "label": {
+                "en": "8",
+                "fr": "8"
+              }
+            },
+            {
+              "value": "9",
+              "label": {
+                "en": "9",
+                "fr": "9"
+              }
+            },
+            {
+              "value": "10",
+              "label": {
+                "en": "10",
+                "fr": "10"
+              }
+            },
+            {
+              "value": "11",
+              "label": {
+                "en": "11",
+                "fr": "11"
+              }
+            },
+            {
+              "value": "12",
+              "label": {
+                "en": "12",
+                "fr": "12"
+              }
+            },
+            {
+              "value": "13",
+              "label": {
+                "en": "13",
+                "fr": "13"
+              }
+            },
+            {
+              "value": "14",
+              "label": {
+                "en": "14",
+                "fr": "14"
+              }
+            },
+            {
+              "value": "15",
+              "label": {
+                "en": "15",
+                "fr": "15"
+              }
+            },
+            {
+              "value": "16",
+              "label": {
+                "en": "16",
+                "fr": "16"
+              }
+            },
+            {
+              "value": "17",
+              "label": {
+                "en": "17",
+                "fr": "17"
+              }
+            },
+            {
+              "value": "18",
+              "label": {
+                "en": "18",
+                "fr": "18"
+              }
+            },
+            {
+              "value": "19",
+              "label": {
+                "en": "19",
+                "fr": "19"
+              }
+            },
+            {
+              "value": "20",
+              "label": {
+                "en": "20",
+                "fr": "20"
+              }
+            },
+            {
+              "value": "21",
+              "label": {
+                "en": "21",
+                "fr": "21"
+              }
+            },
+            {
+              "value": "22",
+              "label": {
+                "en": "22",
+                "fr": "22"
+              }
+            },
+            {
+              "value": "23",
+              "label": {
+                "en": "23",
+                "fr": "23"
+              }
+            },
+            {
+              "value": "24",
+              "label": {
+                "en": "24",
+                "fr": "24"
+              }
+            },
+            {
+              "value": "25",
+              "label": {
+                "en": "25",
+                "fr": "25"
+              }
+            },
+            {
+              "value": "26",
+              "label": {
+                "en": "26",
+                "fr": "26"
+              }
+            },
+            {
+              "value": "27",
+              "label": {
+                "en": "27",
+                "fr": "27"
+              }
+            },
+            {
+              "value": "28",
+              "label": {
+                "en": "28",
+                "fr": "28"
+              }
+            },
+            {
+              "value": "29",
+              "label": {
+                "en": "29",
+                "fr": "29"
+              }
+            },
+            {
+              "value": "30",
+              "label": {
+                "en": "30",
+                "fr": "30"
+              }
+            },
+            {
+              "value": "31",
+              "label": {
+                "en": "31",
+                "fr": "31"
+              }
+            },
+            {
+              "value": "32",
+              "label": {
+                "en": "32",
+                "fr": "32"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
