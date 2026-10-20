@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-20
+
 ### Added
 
 - Local connection to Bosch Solution, AMAX, B Series, G Series and GV4 alarm
@@ -81,4 +83,5 @@ the notes of the version's GitHub Release.
 - Docs: re-arming an area whose alarm memory was not cleared triggers the
   alarm event again.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-bosch-alarm/releases/tag/v0.1.1
