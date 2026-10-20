@@ -69,6 +69,11 @@ the notes of the version's GitHub Release.
   be written is told in the status. "Test the connection" no longer jumps
   a planned wait. A request is never written after its deadline. A session
   that drops right after it came up makes the waits grow.
+- A refusal told late (behind a slow Gladys) after the code was fixed no
+  longer sets the stop again; a configuration saved before the first start
+  no longer lifts a persisted stop; an unreadable answer to a command brings
+  the connection back fast too; a stop during a login leaves no login
+  pending; an unreadable state file is told as such, not as a refused code.
 
 ### Changed
 

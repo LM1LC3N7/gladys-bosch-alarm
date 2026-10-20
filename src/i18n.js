@@ -116,6 +116,10 @@ export const T = {
     en: `The panel never answered the login clearly (connection closed, no answer or an unreadable one), twice in a row: the code may have been refused. The integration stopped and will not try it again by itself.${retryText.en}`,
     fr: `La centrale n'a jamais répondu clairement à la connexion (connexion fermée, pas de réponse ou une réponse illisible), deux fois de suite : le code a pu être refusé. L'intégration s'est arrêtée et ne le réessaiera pas d'elle-même.${retryText.fr}`,
   },
+  stateUnreadable: {
+    en: `The state file of the integration in /data cannot be read: to be safe, it counts as a stop on a refused code, and the integration does not connect.${retryText.en}`,
+    fr: `Le fichier d'état de l'intégration dans /data est illisible : par prudence, il compte comme un arrêt sur un code refusé, et l'intégration ne se connecte pas.${retryText.fr}`,
+  },
   stopNotSaved: {
     en: ' Warning: this stop could not be written to /data; it is kept until the integration restarts.',
     fr: " Attention : cet arrêt n'a pas pu être écrit dans /data ; il tient jusqu'au redémarrage de l'intégration.",

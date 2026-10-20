@@ -132,7 +132,7 @@ codes of the configuration.
   code in the configuration, or click "Allow a new try of the code" (one
   try per click). The file `/data/bosch-alarm-state.json` only keeps the
   date of the stop, never a code; the stop holds even if the address of the
-  panel changes. An unreadable file counts as a stop; if the stop cannot be
+  panel changes. An unreadable file counts as a stop (and is told as such); if the stop cannot be
   written, the connection status says so.
 - Every command, sent or refused, is written in the integration logs; the
   codes never are.

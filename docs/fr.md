@@ -142,7 +142,7 @@ les codes de la configuration.
   sur « Autoriser un nouvel essai du code » (un essai par clic). Le fichier
   `/data/bosch-alarm-state.json` garde seulement la date de l'arrêt, jamais
   un code ; l'arrêt tient même si l'adresse de la centrale change. Un
-  fichier illisible compte comme un arrêt ; si l'arrêt ne peut pas être
+  fichier illisible compte comme un arrêt (annoncé comme tel) ; si l'arrêt ne peut pas être
   écrit, l'état de la connexion le dit.
 - Chaque commande, envoyée ou refusée, est écrite dans les journaux de
   l'intégration, jamais les codes.

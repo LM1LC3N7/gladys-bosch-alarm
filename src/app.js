@@ -108,7 +108,7 @@ export class BoschApp {
       this.online = false;
       // At once, before anything queued behind a slow Gladys: no start may
       // send a refused (or doubtful) code again meanwhile.
-      if (info.refused) this.markCodeStop(info);
+      if (info.refused) info = { ...info, stop: this.markCodeStop(info) };
       this.guard(() => this.onDown(info, wasOnline));
     });
     this.client.on('change', () => this.noteChange());
@@ -284,7 +284,8 @@ export class BoschApp {
     const next = normalizeConfig(raw);
     // First of all: an option switched off applies to the commands at once.
     this.config = next;
-    if (codesKey(next) !== this.codes) {
+    // Before the first start (this.codes unknown), nothing tells the codes changed.
+    if (this.codes !== undefined && codesKey(next) !== this.codes) {
       this.codes = codesKey(next);
       await this.liftCodeStop();
     }
@@ -329,20 +330,28 @@ export class BoschApp {
       this.stopSaved = saved;
       return saved;
     });
+    return this.memory.codeStop;
   }
 
   /** The status of a stop on a code (refused or doubtful; not saved to /data). */
   stopMessage() {
     const stop = this.memory?.codeStop;
-    const base = stop?.doubtful ? T.codeDoubtful : T.codeStopped;
+    let base = T.codeStopped;
+    if (stop?.doubtful) base = T.codeDoubtful;
+    else if (stop?.unreadable) base = T.stateUnreadable;
     if (this.stopSaved) return base;
     return { en: base.en + T.stopNotSaved.en, fr: base.fr + T.stopNotSaved.fr };
   }
 
-  /** Gladys side of a stop on a code. */
-  async stopOnCode(info = {}) {
-    if (!this.codeStopped()) this.markCodeStop(info);
+  /**
+   * Gladys side of a stop on a code: only told, never set here. `stop` is
+   * the stop its 'down' set; lifted or replaced meanwhile (the user fixed
+   * the code while this waited behind a slow Gladys), nothing is told.
+   */
+  async stopOnCode({ stop } = {}) {
+    if (!stop || this.memory?.codeStop !== stop) return;
     await this.stopSaving;
+    if (this.memory?.codeStop !== stop) return;
     await this.setStatus(false, this.stopMessage());
   }
 
@@ -383,10 +392,10 @@ export class BoschApp {
   }
 
   /** Gladys side of a session lost (the app went offline when it was emitted). */
-  async onDown({ reason, retryIn, busy, refused, doubtful, problem }, wasOnline) {
+  async onDown({ reason, retryIn, busy, refused, stop, problem }, wasOnline) {
     const seconds = Math.round((retryIn ?? 0) / 1000);
     if (refused) {
-      await this.stopOnCode({ doubtful });
+      await this.stopOnCode({ stop });
     } else if (problem && T[problem]) {
       this.logger.warn(`Bosch: ${problem}: connection stopped until the configuration changes`);
       await this.setStatus(false, T[problem]);

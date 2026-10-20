@@ -12,7 +12,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 export const STATE_FILE = '/data/bosch-alarm-state.json';
 
 /** What an unreadable state file means: stopped (date unknown). */
-const UNREADABLE = () => ({ codeStop: { at: 0 } });
+const UNREADABLE = () => ({ codeStop: { at: 0, unreadable: true } });
 
 export function fileStore(path = STATE_FILE) {
   // One write at a time: two saves never share the temporary file.
@@ -77,7 +77,11 @@ export function normalizeMemory(raw) {
   const present = stop !== null && typeof stop === 'object' && !Array.isArray(stop);
   return {
     codeStop: present
-      ? { at: Number.isFinite(stop.at) ? stop.at : 0, doubtful: stop.doubtful === true }
+      ? {
+          at: Number.isFinite(stop.at) ? stop.at : 0,
+          doubtful: stop.doubtful === true,
+          unreadable: stop.unreadable === true,
+        }
       : null,
   };
 }

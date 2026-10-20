@@ -235,6 +235,8 @@ export class BoschClient extends EventEmitter {
     const socket = this.socket;
     this.socket = undefined;
     this.ready = false;
+    // No login in flight any more (lost() read it before closing).
+    this.loginPending = false;
     this.background.clear();
     const inflight = this.inflight;
     this.inflight = undefined;
@@ -767,7 +769,7 @@ export class BoschClient extends EventEmitter {
       entry.reject(
         new BoschError(`Unexpected answer to ${entry.label}`, 'unexpected', { sent: true }),
       );
-      this.lost(generation, 'an unexpected answer from the panel');
+      this.lost(generation, 'an unexpected answer from the panel', { fast: entry.command });
       return;
     }
     if (answer.kind === 'nack') {
