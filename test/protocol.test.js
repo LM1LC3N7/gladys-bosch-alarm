@@ -61,7 +61,7 @@ test('the reader cuts answers and status frames, across chunks', () => {
   for (const b of bytes) reader.push(Buffer.from([b]));
   assert.deepEqual(answers, [[0xfe, 0x07], [0xfc]]);
   assert.deepEqual(statuses, [[0x00, 0x00]]);
-  assert.equal(reader.buffer.length, 0);
+  assert.equal(reader.total, 0);
 });
 
 test('an unknown frame type or a frame too long stops the reader', () => {

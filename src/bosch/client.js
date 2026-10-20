@@ -142,10 +142,24 @@ export class BoschClient extends EventEmitter {
     this.ticker = undefined;
     /** Reads running in the background (polling, refreshes), by name: one of each at a time. */
     this.background = new Set();
+    /** A code was refused (or doubtful): start() opens nothing until the codes change or a retry is asked. */
+    this.locked = false;
+    /** Sessions in a row that ended after a login was written, without a clear answer to it. */
+    this.loginDoubts = 0;
+    /** A login frame is written and its answer not read yet. */
+    this.loginPending = false;
+    this.upAt = undefined;
   }
 
   configure({ host, port, automationCode = '', userCode = '' }) {
+    const codesChanged =
+      automationCode !== this.options.automationCode || userCode !== this.options.userCode;
     this.options = { host, port, automationCode, userCode };
+    if (codesChanged) {
+      // Other codes: the refusal of the old ones says nothing of these.
+      this.locked = false;
+      this.loginDoubts = 0;
+    }
   }
 
   get connected() {
@@ -157,11 +171,31 @@ export class BoschClient extends EventEmitter {
     return Boolean(this.socket);
   }
 
-  start() {
+  /**
+   * Opens the connection. After a refused or doubtful code, only
+   * `{ retryCode: true }` (the user's click) opens it, for one more try;
+   * otherwise returns false, nothing sent.
+   */
+  start({ retryCode = false } = {}) {
+    if (this.locked && !retryCode) {
+      this.logger.warn('Bosch: the code was refused before: not connecting');
+      return false;
+    }
+    if (retryCode) {
+      this.locked = false;
+      // One try per click: one more doubtful login stops again.
+      this.loginDoubts = Math.max(this.loginDoubts, LIMITS.loginDoubts - 1);
+    }
     this.stop();
     this.running = true;
     this.failures = 0;
     this.openSoon(0);
+    return true;
+  }
+
+  /** Waiting before a new try (a reconnection timer is set). */
+  get waiting() {
+    return this.running && !this.socket;
   }
 
   /** Opens after `wait`, never sooner than sessionGap after the last connection closed. */
@@ -270,17 +304,37 @@ export class BoschClient extends EventEmitter {
   }
 
   /** The session ended: reconnect later, unless stopped. `retry`: the least wait. */
-  lost(generation, reason, { retry = 0, busy = false } = {}) {
+  lost(generation, reason, { retry = 0, busy = false, fast = false } = {}) {
     if (generation !== this.generation) return;
     this.generation += 1;
     const wasUp = this.ready;
+    const doubtful = this.loginPending;
+    this.loginPending = false;
+    // A command written and not answered when the session ended: back fast too.
+    const commandLeft = Boolean(this.inflight?.command && this.inflight.written);
     this.close();
     if (!this.running) return;
-    this.failures = wasUp ? 1 : this.failures + 1;
-    const retryIn = Math.max(
+    if (doubtful) {
+      // The session ended after a login was written, without a clear answer
+      // (closed, silent, unreadable): the code may have been refused. A few
+      // in a row count as a refusal, never an endless series of logins.
+      this.loginDoubts += 1;
+      if (this.loginDoubts >= LIMITS.loginDoubts) {
+        this.running = false;
+        this.locked = true;
+        this.emit('down', { reason, refused: true, doubtful: true, parked: true, wasUp });
+        return;
+      }
+    }
+    // A session that drops soon after it came up counts as a failure (no endless 10 s loop).
+    const lasted = wasUp && this.now() - (this.upAt ?? 0) >= TIMINGS.shortSession;
+    this.failures = lasted ? 1 : this.failures + 1;
+    let retryIn = Math.max(
       retry,
       TIMINGS.backoff[Math.min(this.failures - 1, TIMINGS.backoff.length - 1)],
     );
+    // A command without an answer: back at once, the state is read again with the session.
+    if ((fast || commandLeft) && wasUp) retryIn = TIMINGS.fastReconnect;
     this.openSoon(retryIn);
     this.emit('down', { reason, retryIn, busy, wasUp });
   }
@@ -294,6 +348,8 @@ export class BoschClient extends EventEmitter {
     this.generation += 1;
     const wasUp = this.ready;
     this.running = false;
+    this.loginPending = false;
+    if (info.refused) this.locked = true;
     this.close();
     this.emit('down', { ...info, parked: true, wasUp });
   }
@@ -346,7 +402,7 @@ export class BoschClient extends EventEmitter {
       this.lastResync = now;
       this.lastRepair = 0;
       this.ready = true;
-      this.failures = 0;
+      this.upAt = now;
       this.emit('up', { model: this.model });
     } catch (err) {
       if (generation !== this.generation) return;
@@ -371,13 +427,22 @@ export class BoschClient extends EventEmitter {
    * only, never in a log or an error.
    */
   async login(credentials) {
+    this.loginPending = true;
+    const result = await this.loginFrames(credentials);
+    // A clear answer came: accepted, refused or busy.
+    this.loginPending = false;
+    if (result === 'ok') this.loginDoubts = 0;
+    return result;
+  }
+
+  async loginFrames(credentials) {
     if (credentials.automation) {
       let result;
       try {
         result = await this.request(
           CMD.AUTHENTICATE,
           encodeAutomationCode(credentials.userType, credentials.automation),
-          { internal: true, label: 'log in (automation code)' },
+          { internal: true, label: 'log in (automation code)', timeout: TIMINGS.loginTimeout },
         );
       } catch (err) {
         if (err instanceof BoschError && err.kind === 'nack') return 'refused';
@@ -391,6 +456,7 @@ export class BoschClient extends EventEmitter {
         await this.request(CMD.LOGIN_REMOTE_USER, encodeUserCode(credentials.user), {
           internal: true,
           label: 'log in (user code)',
+          timeout: TIMINGS.loginTimeout,
         });
       } catch (err) {
         if (err instanceof BoschError && err.kind === 'nack') return 'refused';
@@ -669,8 +735,10 @@ export class BoschClient extends EventEmitter {
         // reference reads the outputs again instead).
         this.refresh('outputs', () => this.loadOutputs());
       } else if (update.type === 'alarms') {
+        // Only the ten priorities exist; one grouped read, whatever the number of updates.
+        if (!PRIORITIES.includes(update.priority)) continue;
         if (update.count === 0) alarms.set(update.priority, []);
-        else this.refresh(`alarms-${update.priority}`, () => this.loadAlarmDetail(update.priority));
+        else this.refresh('alarms', () => this.loadAlarms());
       }
     }
     if (stopped) {
@@ -722,7 +790,9 @@ export class BoschClient extends EventEmitter {
    * `label` replaces the command in the logs. `sendBy` (a time): never
    * written after it, rejected as not sent instead. `answerBy` (a time): the
    * answer is awaited up to it. `check()`: read right before the write,
-   * false withdraws the request (nothing sent).
+   * false withdraws the request (nothing sent). `priority`: a command or the
+   * read before it, queued before the background reads. `command`: a
+   * command; without an answer, the session comes back at once.
    */
   request(
     cmd,
@@ -734,6 +804,8 @@ export class BoschClient extends EventEmitter {
       sendBy,
       answerBy,
       check,
+      priority = false,
+      command = false,
     } = {},
   ) {
     return new Promise((resolve, reject) => {
@@ -741,7 +813,20 @@ export class BoschClient extends EventEmitter {
         reject(new BoschError('Not connected to the panel', 'offline'));
         return;
       }
-      const entry = { cmd, data, label, timeout, answerBy, check, resolve, reject, written: false };
+      const entry = {
+        cmd,
+        data,
+        label,
+        timeout,
+        sendBy,
+        answerBy,
+        check,
+        priority,
+        command,
+        resolve,
+        reject,
+        written: false,
+      };
       if (sendBy !== undefined) {
         const wait = sendBy - this.now();
         if (wait <= 0) {
@@ -756,7 +841,14 @@ export class BoschClient extends EventEmitter {
           reject(new BoschError(`${label} not sent in time`, 'late'));
         }, wait);
       }
-      this.queue.push(entry);
+      if (priority) {
+        // Before every background read, after the other commands (their order is kept).
+        const at = this.queue.findIndex((e) => !e.priority);
+        if (at < 0) this.queue.push(entry);
+        else this.queue.splice(at, 0, entry);
+      } else {
+        this.queue.push(entry);
+      }
       this.pump();
     });
   }
@@ -766,6 +858,12 @@ export class BoschClient extends EventEmitter {
     const entry = this.queue.shift();
     this.timers.clearTimeout(entry.deadline);
     const generation = this.generation;
+    // Never written after its deadline (a timer may fire late).
+    if (entry.sendBy !== undefined && this.now() > entry.sendBy) {
+      entry.reject(new BoschError(`${entry.label} not sent in time`, 'late'));
+      this.pump();
+      return;
+    }
     // Last look before the socket: a command whose option was switched off
     // while it waited is withdrawn, never written.
     if (entry.check && !entry.check()) {
@@ -799,7 +897,7 @@ export class BoschClient extends EventEmitter {
       this.inflight = undefined;
       entry.reject(new BoschError(`No answer to ${entry.label}`, 'timeout', { sent: true }));
       // A late answer would be taken for the next request's: start again.
-      this.lost(generation, `no answer to ${entry.label}`);
+      this.lost(generation, `no answer to ${entry.label}`, { fast: entry.command });
     }, wait);
   }
 
@@ -838,6 +936,8 @@ export class BoschClient extends EventEmitter {
   arm(area, type, options = {}) {
     return this.request(CMD.AREA_ARM, [type, ...encodeAreaMask(area)], {
       label: `arm (type ${hex(type)}), area ${area}`,
+      priority: true,
+      command: true,
       ...options,
     });
   }
@@ -845,6 +945,8 @@ export class BoschClient extends EventEmitter {
   disarm(area, options = {}) {
     return this.request(CMD.AREA_ARM, [ARM_TYPE.DISARM, ...encodeAreaMask(area)], {
       label: `disarm, area ${area}`,
+      priority: true,
+      command: true,
       ...options,
     });
   }
@@ -852,6 +954,8 @@ export class BoschClient extends EventEmitter {
   setOutput(output, on, options = {}) {
     return this.request(CMD.SET_OUTPUT_STATE, [output, on ? 0x01 : 0x00], {
       label: `output ${output} ${on ? 'on' : 'off'}`,
+      priority: true,
+      command: true,
       ...options,
     });
   }

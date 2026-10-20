@@ -83,7 +83,9 @@ n'apparaissent jamais dans les journaux ni dans `/data`.
 
 Le bouton **Tester la connexion** se connecte tout de suite si aucune
 connexion n'est ouverte (sinon il attend celle en cours) et indique le
-modèle, l'état des secteurs et le nombre de points et de sorties.
+modèle, l'état des secteurs et le nombre de points et de sorties. Il ne
+devance jamais un nouvel essai déjà prévu (attente après une coupure ou
+« plus de connexion libre ») : il indique alors l'état en cours.
 
 Le bouton **Autoriser un nouvel essai du code** lève l'arrêt posé après un
 code refusé (voir « Sécurité ») : l'intégration se reconnecte une fois avec
@@ -121,21 +123,27 @@ les codes de la configuration.
   demandé : rien n'est envoyé ; temporisation d'entrée en cours : armement
   refusé). Les commandes passent une par une, dans l'ordre. Une commande
   dont le temps s'est épuisé en attendant son tour est refusée, rien n'est
-  envoyé. Un armement retire un désarmement du même secteur qui attend
-  encore son tour.
+  envoyé. Un armement passe avant les désarmements et sorties en attente,
+  et retire un désarmement du même secteur, en attente ou en cours, tant
+  qu'il n'est pas parti vers la centrale.
 - Une commande qui ne peut pas partir dans les temps (centrale lente, état
   illisible) est refusée avec « rien n'a été envoyé ». Une commande partie
   sans réponse claire (pas de réponse, coupure) est annoncée « envoyée, sans
-  confirmation » et l'état est relu deux secondes plus tard : elle n'est
-  jamais annoncée « non envoyée ». Seul un refus de la centrale est annoncé
-  « refusée » (droits insuffisants, armement impossible…).
+  confirmation » : la connexion est relancée aussitôt (environ 5 s) et l'état
+  relu dès son retour ; elle n'est jamais annoncée « non envoyée ». Seul un
+  refus de la centrale est annoncé « refusée » (droits insuffisants,
+  armement impossible…).
 - **Si la centrale refuse un code à la connexion, l'intégration s'arrête et
   ne le renvoie jamais d'elle-même**, même après un redémarrage (une centrale
-  peut compter les codes faux et signaler une fraude au code). Changez un
-  code dans la configuration, ou cliquez sur « Autoriser un nouvel essai du
-  code » (un essai par clic). Le fichier `/data/bosch-alarm-state.json` garde
-  seulement la date de l'arrêt, jamais un code ; l'arrêt tient même si
-  l'adresse de la centrale change.
+  peut compter les codes faux et signaler une fraude au code). Il en va de
+  même si la centrale ne répond pas clairement à la connexion deux fois de
+  suite (connexion fermée, pas de réponse en 15 s, réponse illisible) : le
+  code a pu être refusé. Changez un code dans la configuration, ou cliquez
+  sur « Autoriser un nouvel essai du code » (un essai par clic). Le fichier
+  `/data/bosch-alarm-state.json` garde seulement la date de l'arrêt, jamais
+  un code ; l'arrêt tient même si l'adresse de la centrale change. Un
+  fichier illisible compte comme un arrêt ; si l'arrêt ne peut pas être
+  écrit, l'état de la connexion le dit.
 - Chaque commande, envoyée ou refusée, est écrite dans les journaux de
   l'intégration, jamais les codes.
 
@@ -145,7 +153,10 @@ les codes de la configuration.
   deux connexions.
 - Sur une coupure, les nouveaux essais sont espacés : 10 s, 30 s, 1 min,
   2 min, puis toutes les 5 minutes ; au moins une minute quand la centrale
-  n'a plus de connexion libre, cinq minutes pour un modèle inconnu.
+  n'a plus de connexion libre, cinq minutes pour un modèle inconnu. Une
+  connexion qui tombe moins d'une minute après son ouverture compte comme
+  un échec (les attentes s'allongent). Après une commande sans réponse, la
+  connexion revient au bout d'environ 5 s.
 - Les centrales qui le permettent envoient elles-mêmes chaque changement
   (abonnement) ; les autres sont relues toutes les 2 secondes. Tout est relu
   toutes les 10 minutes, les défauts chaque minute.
@@ -165,6 +176,11 @@ les codes de la configuration.
   pilotées (la commande du protocole ne prend qu'un octet).
 - Une alarme déjà en cours au démarrage de l'intégration ne déclenche pas de
   scène (seuls les changements vus le font).
+- La mémoire d'alarme reste sur la centrale jusqu'à son effacement au
+  clavier : réarmer un secteur dont la mémoire n'est pas effacée déclenche de
+  nouveau « Alarme Bosch déclenchée » (comme dans Home Assistant). Effacez la
+  mémoire au clavier après une alarme.
+- Les trames de plus de 8 Ko sont refusées (connexion relancée).
 
 ## Confidentialité
 

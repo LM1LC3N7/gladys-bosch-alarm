@@ -124,6 +124,9 @@ test('the configuration matches the code', () => {
   assert.equal(fields.user_code.type, 'secret');
   assert.match(fields.automation_code.description.en, /without a check of the panel's certificate/);
   assert.match(fields.automation_code.description.fr, /sans vérification du certificat/);
+  // Review 1, minor 1: the user code travels the same way.
+  assert.match(fields.user_code.description.en, /without a check of the panel's certificate/);
+  assert.match(fields.user_code.description.fr, /sans vérification du certificat/);
   const safety = fields.safety.description;
   assert.match(safety.en, /false alarm.*monitoring company/);
   assert.match(safety.fr, /fausse alarme.*télésurveillance/);

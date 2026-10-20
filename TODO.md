@@ -26,7 +26,10 @@ up to date at the end of every milestone.
       `disarmed`; scene actions `arm`, `disarm`; "Test the connection",
       "Allow a new try of the code"; fr/en. Tested against an in-memory
       panel only.
-- [ ] **Review** (xhigh: alarm) and its fixes.
+- [x] **Review 1 fixes** (2026-10-20, xhigh review of 50a7fea: 7 important,
+      6 minor): see "Decisions after review 1" below; one test per scenario
+      in `test/review1.test.js`.
+- [ ] **Approval** of the review fixes.
 - [ ] **Milestone 2 - real panel**: run against a real B Series, a Solution
       and an AMAX; capture real frames (anonymised) as fixtures; fix what
       differs (see below).
@@ -127,7 +130,8 @@ up to date at the end of every milestone.
   already in the state (an exit delay towards it included): nothing sent;
   entry delay running: arming refused. Reads by 2.8 s, sent by 3.5 s or
   withdrawn ("nothing was sent"), answer awaited until 4.5 s; no answer or
-  a lost session: "sent, without confirmation" + read back in 2 s. A NACK:
+  a lost session: "sent, without confirmation", the session comes back in
+  about 5 s and is read again (I5 below). A NACK:
   "refused by the panel", with its meaning (no authority, cannot arm…).
   Arming types with delays only: B/G/GV4 master / perimeter delay,
   Solution/AMAX away / stay 1.
@@ -136,9 +140,9 @@ up to date at the end of every milestone.
   armed stay (a lower protection); `allow_outputs` (off). Checked when
   asked, again inside the queue after the fresh read, and once more by the
   client right before the socket write. An arming withdraws a disarm of the
-  same area still waiting its turn (never one already being handled). One
-  command at a time, in the order asked; one whose own readBy passed while
-  it waited is refused ("other commands took all the time").
+  same area until its write and goes first (I3 below). One command at a
+  time; one whose own readBy passed while it waited is refused ("other
+  commands took all the time").
 - **Objects**: the areas, points and outputs the panel declares (configured
   id sets), with their names (CF03 pages, CF01 one by one, else defaults),
   read once per list and address; bounded (32 areas, 600 points, 600
@@ -162,3 +166,50 @@ up to date at the end of every milestone.
   no end-to-end test in a container; the store validator
   (`npx github:GladysAssistant/integration-store .`) cannot be run from the
   agent session; never run against a real panel.
+
+## Decisions after review 1 (2026-10-20)
+
+- **I1 - stop at once**: the client's `down` with a refused code sets
+  `memory.codeStop` synchronously in the event listener (outside the guard
+  chain, so a slow Gladys can no longer delay it) and writes it to /data
+  right away. `startClient()` checks the stop again right before
+  `client.start()`. The client itself locks after a refusal: `start()`
+  opens nothing until the codes change (`configure`) or the user clicks
+  "Allow a new try of the code" (`start({ retryCode: true })`).
+- **I2 - doubtful logins**: a session that ends after a login frame was
+  written, without a clear answer (closed, no answer within 15 s, an
+  unreadable answer), counts as a doubt; 2 in a row stop exactly as a
+  refusal (persisted, `doubtful: true`, its own status message). The count
+  goes back to 0 only after an accepted login; a retry click allows one
+  more try.
+- **I3 - arming first**: the command queue puts an arming before the
+  disarms and outputs waiting; an arming withdraws a disarm of the same
+  area, waiting or being handled, until its write (checked after its fresh
+  read, before `send`, and by the client right before the socket write).
+- **I4 - bounded publication**: the updates of a burst are published once
+  they stop for settleMs, at most 4 x settleMs after the first one.
+- **I5 - unconfirmed commands**: a command without an answer (timeout, or
+  a session lost after its write) brings the session back after 5 s
+  (`fastReconnect`, no backoff); the session reads everything again. The
+  message says "the state read again as soon as it is back (about 5 s)".
+- **I6 - linear reader**: the reader keeps the chunks as received and
+  joins them only once the announced frame is complete; frames over 8 KB
+  are refused (an answer holds 255 bytes, a status frame of 600 points
+  1.8 KB).
+- **I7 - flood of alarm updates**: priorities outside 1-10 are ignored;
+  one grouped `loadAlarms` read at a time, whatever the number of updates;
+  the commands and their fresh reads are queued before every background
+  read (`priority`).
+- **Minor 1**: the user code field says it travels over TLS without a
+  certificate check, and is never sent again by itself after a refusal.
+- **Minor 2**: an unreadable, oversized or non-JSON state file counts as a
+  stop (no file: no stop); a stop that could not be written is told in the
+  connection status.
+- **Minor 3**: "Test the connection" never starts a connection while a new
+  try is planned (backoff, "max connections"): it tells the current status.
+- **Minor 4**: `pump()` refuses a request whose `sendBy` passed even if its
+  deadline timer did not fire yet.
+- **Minor 5**: documented: re-arming an area whose alarm memory was not
+  cleared at a keypad triggers `alarm_triggered` again (as Home Assistant).
+- **Minor 6**: a session that drops less than 60 s after it came up counts
+  as a failure: the waits grow instead of a reconnection every 10 s.

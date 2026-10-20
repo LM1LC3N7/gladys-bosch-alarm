@@ -90,10 +90,14 @@ export class BoschApp {
     this.sweeper = undefined;
     this.flushTimer = undefined;
     this.modelPlace = undefined;
-    /** Commands waiting their turn (not started yet). */
-    this.waiting = new Set();
-    this.commands = Promise.resolve();
+    /** Commands waiting their turn (not started yet), arms first; the one being handled. */
+    this.waiting = [];
+    this.current = undefined;
     this.starting = Promise.resolve();
+    /** When the first change of a burst came: its publication waits at most 4 x settleMs. */
+    this.changeSince = undefined;
+    /** Whether the last persisted stop reached /data. */
+    this.stopSaved = true;
     this.client.on('up', ({ model }) => {
       this.model = model;
       this.online = true;
@@ -102,6 +106,9 @@ export class BoschApp {
     this.client.on('down', (info) => {
       const wasOnline = this.online;
       this.online = false;
+      // At once, before anything queued behind a slow Gladys: no start may
+      // send a refused (or doubtful) code again meanwhile.
+      if (info.refused) this.markCodeStop(info);
       this.guard(() => this.onDown(info, wasOnline));
     });
     this.client.on('change', () => this.noteChange());
@@ -139,11 +146,14 @@ export class BoschApp {
     return this.memory;
   }
 
+  /** Persists the memory; false (logged) when /data refused it. */
   async saveMemory() {
     try {
       await this.store.save(this.memory);
+      return true;
     } catch (err) {
       this.logger.warn(`Saving the state to /data failed: ${err.message}`);
+      return false;
     }
   }
 
@@ -179,24 +189,33 @@ export class BoschApp {
       await this.setStatus(false, problem);
       return;
     }
-    if (this.codeStopped()) {
-      this.logger.warn('Bosch: the panel refused the code before: not connecting');
-      await this.setStatus(false, T.codeStopped);
-      return;
-    }
     await this.startClient();
   }
 
-  async startClient() {
-    await this.setStatus(false, T.connecting);
+  /**
+   * Starts the client, unless a code was refused: checked again right
+   * before client.start() (a stop may have come while the status was sent).
+   * `retryCode`: the user's click for one new try.
+   */
+  async startClient({ retryCode = false } = {}) {
+    if (!this.codeStopped()) await this.setStatus(false, T.connecting);
+    if (this.codeStopped()) {
+      this.logger.warn('Bosch: the panel refused the code before: not connecting');
+      await this.setStatus(false, this.stopMessage());
+      return false;
+    }
     this.client.configure({
       host: this.config.host,
       port: this.config.port,
       automationCode: this.config.automationCode,
       userCode: this.config.userCode,
     });
-    this.client.start();
+    if (!this.client.start({ retryCode })) {
+      await this.setStatus(false, T.codeStopped);
+      return false;
+    }
     if (!this.sweeper) this.startSweeper();
+    return true;
   }
 
   startSweeper() {
@@ -218,6 +237,7 @@ export class BoschApp {
     }
     if (this.flushTimer) this.timers.clearTimeout(this.flushTimer);
     this.flushTimer = undefined;
+    this.changeSince = undefined;
     for (const timer of this.readBacks) this.timers.clearTimeout(timer);
     this.readBacks.clear();
   }
@@ -280,6 +300,7 @@ export class BoschApp {
     const memory = await this.loadMemory();
     if (!memory.codeStop) return;
     memory.codeStop = null;
+    this.stopSaved = true;
     await this.saveMemory();
     this.logger.info('Bosch: the stop on the refused code is lifted');
   }
@@ -289,16 +310,40 @@ export class BoschApp {
     return Boolean(this.memory?.codeStop);
   }
 
-  /** The panel refused a code at login: no new login until a code changes or a click. Persisted. */
-  async stopOnCode() {
-    const memory = await this.loadMemory();
-    const already = Boolean(memory.codeStop);
-    memory.codeStop = { at: this.now() };
+  /**
+   * The panel refused a code at login, or never answered it clearly: the
+   * stop is set in memory at once (synchronously) and written to /data.
+   */
+  markCodeStop({ doubtful = false } = {}) {
+    if (!this.memory) this.memory = normalizeMemory(null);
+    const already = Boolean(this.memory.codeStop);
+    this.memory.codeStop = { at: this.now(), doubtful: Boolean(doubtful) };
     if (!already) {
-      this.logger.error('Bosch: the panel refused the code at login: connection stopped');
+      this.logger.error(
+        doubtful
+          ? 'Bosch: the panel never answered the login clearly: connection stopped'
+          : 'Bosch: the panel refused the code at login: connection stopped',
+      );
     }
-    await this.saveMemory();
-    await this.setStatus(false, T.codeStopped);
+    this.stopSaving = this.saveMemory().then((saved) => {
+      this.stopSaved = saved;
+      return saved;
+    });
+  }
+
+  /** The status of a stop on a code (refused or doubtful; not saved to /data). */
+  stopMessage() {
+    const stop = this.memory?.codeStop;
+    const base = stop?.doubtful ? T.codeDoubtful : T.codeStopped;
+    if (this.stopSaved) return base;
+    return { en: base.en + T.stopNotSaved.en, fr: base.fr + T.stopNotSaved.fr };
+  }
+
+  /** Gladys side of a stop on a code. */
+  async stopOnCode(info = {}) {
+    if (!this.codeStopped()) this.markCodeStop(info);
+    await this.stopSaving;
+    await this.setStatus(false, this.stopMessage());
   }
 
   async setStatus(connected, message) {
@@ -338,10 +383,10 @@ export class BoschApp {
   }
 
   /** Gladys side of a session lost (the app went offline when it was emitted). */
-  async onDown({ reason, retryIn, busy, refused, problem }, wasOnline) {
+  async onDown({ reason, retryIn, busy, refused, doubtful, problem }, wasOnline) {
     const seconds = Math.round((retryIn ?? 0) / 1000);
     if (refused) {
-      await this.stopOnCode();
+      await this.stopOnCode({ doubtful });
     } else if (problem && T[problem]) {
       this.logger.warn(`Bosch: ${problem}: connection stopped until the configuration changes`);
       await this.setStatus(false, T[problem]);
@@ -358,14 +403,25 @@ export class BoschApp {
     }
   }
 
-  /** Something changed: published once the updates stopped for settleMs. */
+  /**
+   * Something changed: published once the updates stopped for settleMs, at
+   * most 4 x settleMs after the first one (a flapping point never holds
+   * back the states and the alarm events).
+   */
   noteChange() {
     if (!this.online) return;
+    const now = this.now();
+    if (this.changeSince === undefined) this.changeSince = now;
     if (this.flushTimer) this.timers.clearTimeout(this.flushTimer);
-    this.flushTimer = this.timers.setTimeout(() => {
-      this.flushTimer = undefined;
-      this.guard(() => this.flushChanges());
-    }, this.settleMs);
+    const wait = Math.min(this.settleMs, this.changeSince + this.settleMs * 4 - now);
+    this.flushTimer = this.timers.setTimeout(
+      () => {
+        this.flushTimer = undefined;
+        this.changeSince = undefined;
+        this.guard(() => this.flushChanges());
+      },
+      Math.max(0, wait),
+    );
   }
 
   async flushChanges() {
@@ -518,32 +574,57 @@ export class BoschApp {
    * parallel: "arm 1" and "arm 2" both go, one after the other); a failed
    * one never blocks the next. A command whose own time ran out while it
    * waited its turn is refused, nothing sent (Gladys would give up on it
-   * anyway). An arming withdraws a disarm of the same area that is still
-   * waiting (never one already being handled).
+   * anyway). An arming goes before the disarms and outputs waiting, and
+   * withdraws a disarm of the same area, waiting or being handled, as long
+   * as it is not written.
    */
   serial({ asked = this.now(), area, kind } = {}, fn) {
-    const ticket = { area, kind, withdrawn: false };
-    if (kind === 'arm') {
-      for (const waiting of this.waiting) {
-        if (waiting.kind === 'disarm' && waiting.area === area) waiting.withdrawn = true;
+    return new Promise((resolve, reject) => {
+      const ticket = { asked, area, kind, withdrawn: false, fn, resolve, reject };
+      if (kind === 'arm') {
+        // A protective command: it withdraws a disarm of the same area, waiting
+        // or being handled (until its write), and goes before the disarms and
+        // outputs still waiting.
+        for (const other of [this.current, ...this.waiting]) {
+          if (other?.kind === 'disarm' && other.area === area) other.withdrawn = true;
+        }
+        const at = this.waiting.findIndex((t) => t.kind !== 'arm');
+        if (at < 0) this.waiting.push(ticket);
+        else this.waiting.splice(at, 0, ticket);
+      } else {
+        this.waiting.push(ticket);
       }
+      this.nextCommand();
+    });
+  }
+
+  nextCommand() {
+    if (this.current || this.waiting.length === 0) return;
+    const ticket = this.waiting.shift();
+    this.current = ticket;
+    Promise.resolve()
+      .then(() => this.startCommand(ticket))
+      .then(ticket.resolve, ticket.reject)
+      .finally(() => {
+        this.current = undefined;
+        this.nextCommand();
+      });
+  }
+
+  startCommand(ticket) {
+    this.checkWithdrawn(ticket);
+    if (this.now() >= ticket.asked + TIMINGS.readBy) {
+      this.logger.warn('Command REFUSED: its time ran out behind other commands');
+      throw this.refused(T.commandBusy);
     }
-    this.waiting.add(ticket);
-    const start = () => {
-      this.waiting.delete(ticket);
-      if (ticket.withdrawn) {
-        this.logger.warn(`Disarm WITHDRAWN (area ${area}): an arming was asked meanwhile`);
-        throw this.refused(T.disarmWithdrawn);
-      }
-      if (this.now() >= asked + TIMINGS.readBy) {
-        this.logger.warn('Command REFUSED: its time ran out behind other commands');
-        throw this.refused(T.commandBusy);
-      }
-      return fn();
-    };
-    const run = this.commands.then(start, start);
-    this.commands = run.catch(() => undefined);
-    return run;
+    return ticket.fn(ticket);
+  }
+
+  /** A disarm withdrawn by an arming of its area: refused, nothing sent. */
+  checkWithdrawn(ticket) {
+    if (!ticket?.withdrawn) return;
+    this.logger.warn(`Disarm WITHDRAWN (area ${ticket.area}): an arming was asked meanwhile`);
+    throw this.refused(T.disarmWithdrawn);
   }
 
   /** A whole number given by Gladys or a scene; '', null, 1.5 or 'x' are not numbers. */
@@ -617,7 +698,7 @@ export class BoschApp {
     if (readBy - this.now() < 100) throw this.refused(T.tooLate);
     let status;
     try {
-      status = await this.client.readArea(n, { sendBy: readBy, answerBy: readBy });
+      status = await this.client.readArea(n, { sendBy: readBy, answerBy: readBy, priority: true });
     } catch (err) {
       throw this.readRefusal(err);
     }
@@ -632,7 +713,7 @@ export class BoschApp {
     const readBy = asked + TIMINGS.readBy;
     if (readBy - this.now() < 100) throw this.refused(T.tooLate);
     try {
-      return await this.client.readOutputs({ sendBy: readBy, answerBy: readBy });
+      return await this.client.readOutputs({ sendBy: readBy, answerBy: readBy, priority: true });
     } catch (err) {
       throw this.readRefusal(err);
     }
@@ -645,7 +726,7 @@ export class BoschApp {
    * or a lost connection after the write is "sent, without confirmation",
    * with onSent() and a read back.
    */
-  async send(what, asked, run, { command, onSent, readBack }) {
+  async send(what, asked, run, { command, onSent, readBack, ticket }) {
     const label = word(what, 'en');
     if (this.now() > asked + TIMINGS.sendBy) {
       this.logger.warn(`Command NOT sent (${label}): too late`);
@@ -653,6 +734,7 @@ export class BoschApp {
     }
     // The configuration may have changed while the command waited its turn.
     this.check(command, what);
+    this.checkWithdrawn(ticket);
     const request = run({
       sendBy: asked + TIMINGS.sendBy,
       // Absolute: the client waits from the write up to it, whatever was ahead in the queue.
@@ -661,7 +743,7 @@ export class BoschApp {
       check: () => {
         try {
           this.check(command, what);
-          return true;
+          return !ticket?.withdrawn;
         } catch {
           return false;
         }
@@ -672,7 +754,10 @@ export class BoschApp {
     } catch (err) {
       if (err instanceof BoschError && !err.sent) {
         this.logger.warn(`Command NOT sent (${label}): ${err.message}`);
-        if (err.kind === 'withdrawn') this.check(command, what);
+        if (err.kind === 'withdrawn') {
+          this.checkWithdrawn(ticket);
+          this.check(command, what);
+        }
         throw this.refused(err.kind === 'late' || err.kind === 'withdrawn' ? T.tooLate : T.offline);
       }
       if (err instanceof BoschError && err.kind === 'nack') {
@@ -744,9 +829,11 @@ export class BoschApp {
     const n = this.areaOf(rawArea);
     const what = fill(COMMAND_NAMES.disarm, n);
     this.check('disarm', what);
-    return this.serial({ asked, area: n, kind: 'disarm' }, async () => {
+    return this.serial({ asked, area: n, kind: 'disarm' }, async (ticket) => {
       this.check('disarm', what);
       const current = await this.freshArea(n, asked);
+      // An arming asked during the read wins.
+      this.checkWithdrawn(ticket);
       if (current.mode === 'disarmed') {
         this.logger.info(`Area ${n} already disarmed: nothing sent`);
         return;
@@ -754,6 +841,7 @@ export class BoschApp {
       this.check('disarm', what);
       this.logger.info(`DISARMING from Gladys: ${word(what, 'en')}`);
       await this.send(what, asked, (options) => this.client.disarm(n, options), {
+        ticket,
         command: 'disarm',
         onSent: () =>
           this.commanded.set(n, { mode: 'disarmed', until: this.now() + TIMINGS.commandMemory }),
@@ -812,7 +900,14 @@ export class BoschApp {
     const problem = this.configProblem();
     if (problem) throw this.error(problem);
     if (this.codeStopped()) throw this.error(T.codeStoppedTest);
-    if (!this.client.connected && !this.client.busy) await this.startClient();
+    if (this.client.waiting) {
+      // A new try is planned (backoff, "max connections"): never sooner.
+      const [, message] = this.lastStatus ? JSON.parse(this.lastStatus) : [];
+      throw this.error(message ?? T.stillConnecting);
+    }
+    if (!this.client.connected && !this.client.busy) {
+      if (!(await this.startClient())) throw this.error(this.stopMessage());
+    }
     const result = await this.waitForLink();
     await this.chain;
     if (result === 'timeout') throw this.error(T.stillConnecting);
@@ -834,7 +929,7 @@ export class BoschApp {
     const problem = this.configProblem();
     if (problem) throw this.error(problem);
     await this.liftCodeStop();
-    await this.startClient();
+    await this.startClient({ retryCode: true });
     return T.codeRetryAllowed;
   }
 }

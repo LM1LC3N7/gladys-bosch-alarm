@@ -54,8 +54,16 @@ export const LIMITS = {
   maxUserCode: 8,
   /** Characters kept of a name read from the panel. */
   maxName: 40,
-  /** Payload bytes of one frame (16-bit length): anything longer is not ours. */
-  maxFrame: 65_535,
+  /**
+   * Payload bytes of one frame: an answer holds at most 255, a status frame
+   * of 600 points 1.8 KB; anything longer is not ours.
+   */
+  maxFrame: 8 * 1024,
+  /**
+   * Sessions in a row that ended after a login was written without a clear
+   * answer (closed, silent, unreadable): then the code counts as refused.
+   */
+  loginDoubts: 2,
   /** Pages of an alarm memory detail (0xFFFF sentinel) before giving up. */
   maxAlarmPages: 20,
   /** States per minute sent to Gladys (the core admits 300). */
@@ -77,6 +85,12 @@ export const TIMINGS = {
   connectTimeout: 15_000,
   /** One request (the reference waits up to 30 s for the connection only). */
   requestTimeout: 5_000,
+  /** A login: the panel may check the code slowly. */
+  loginTimeout: 15_000,
+  /** A session that drops sooner than this after it came up counts as a failure. */
+  shortSession: 60_000,
+  /** A command without an answer resets the session: back after this, without backoff. */
+  fastReconnect: 5_000,
   /** A keep-alive (0x01) after this long without a request. */
   keepAlive: 60_000,
   /** Nothing received for this long while connected: the link is dead. */

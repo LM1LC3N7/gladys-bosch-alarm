@@ -11,17 +11,30 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 
 export const STATE_FILE = '/data/bosch-alarm-state.json';
 
+/** What an unreadable state file means: stopped (date unknown). */
+const UNREADABLE = () => ({ codeStop: { at: 0 } });
+
 export function fileStore(path = STATE_FILE) {
   // One write at a time: two saves never share the temporary file.
   let chain = Promise.resolve();
   return {
+    /**
+     * No file: no stop. A file that cannot be read, is too big or is not
+     * JSON counts as a stop: a doubt never sends a refused code again.
+     */
     async load() {
+      let text;
       try {
-        const text = await readFile(path, 'utf8');
-        // A state file is a few dozen bytes: anything big is not ours.
-        return text.length > 4096 ? null : JSON.parse(text);
+        text = await readFile(path, 'utf8');
+      } catch (err) {
+        return err?.code === 'ENOENT' ? null : UNREADABLE();
+      }
+      // A state file is a few dozen bytes: anything big is not ours.
+      if (text.length > 4096) return UNREADABLE();
+      try {
+        return JSON.parse(text);
       } catch {
-        return null;
+        return UNREADABLE();
       }
     },
     save(data) {
@@ -63,6 +76,8 @@ export function normalizeMemory(raw) {
   const stop = raw?.codeStop;
   const present = stop !== null && typeof stop === 'object' && !Array.isArray(stop);
   return {
-    codeStop: present ? { at: Number.isFinite(stop.at) ? stop.at : 0 } : null,
+    codeStop: present
+      ? { at: Number.isFinite(stop.at) ? stop.at : 0, doubtful: stop.doubtful === true }
+      : null,
   };
 }

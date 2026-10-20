@@ -76,7 +76,9 @@ logs nor in `/data`.
 
 The **Test the connection** button connects at once when no connection is
 open (else it waits for the one in progress) and tells the model, the state
-of the areas and the number of points and outputs.
+of the areas and the number of points and outputs. It never jumps ahead of
+a new try already planned (a wait after a cut or "no free connection"): it
+then tells the current state.
 
 The **Allow a new try of the code** button lifts the stop set after a
 refused code (see "Safety"): the integration logs in once more with the
@@ -113,19 +115,25 @@ codes of the configuration.
   (already in the asked state: nothing is sent; entry delay running: arming
   refused). The commands go one at a time, in order. A command whose time
   ran out while it waited its turn is refused, nothing is sent. An arming
-  withdraws a disarm of the same area still waiting its turn.
+  goes before the disarms and outputs waiting, and withdraws a disarm of
+  the same area, waiting or in progress, as long as it has not left for
+  the panel.
 - A command that cannot leave in time (slow panel, unreadable state) is
   refused with "nothing was sent". A command that left without a clear
-  answer (no answer, a cut) is reported "sent, without confirmation" and
-  the state is read again two seconds later: it is never reported "not
-  sent". Only a refusal of the panel is reported "refused" (no right,
-  cannot arm…).
+  answer (no answer, a cut) is reported "sent, without confirmation": the
+  connection is restarted at once (about 5 s) and the state read again as
+  soon as it is back; it is never reported "not sent". Only a refusal of
+  the panel is reported "refused" (no right, cannot arm…).
 - **If the panel refuses a code at login, the integration stops and never
   sends it again by itself**, even after a restart (a panel may count wrong
-  codes and report a code tamper). Change a code in the configuration, or
-  click "Allow a new try of the code" (one try per click). The file
-  `/data/bosch-alarm-state.json` only keeps the date of the stop, never a
-  code; the stop holds even if the address of the panel changes.
+  codes and report a code tamper). The same goes when the panel does not
+  answer the login clearly twice in a row (connection closed, no answer
+  within 15 s, unreadable answer): the code may have been refused. Change a
+  code in the configuration, or click "Allow a new try of the code" (one
+  try per click). The file `/data/bosch-alarm-state.json` only keeps the
+  date of the stop, never a code; the stop holds even if the address of the
+  panel changes. An unreadable file counts as a stop; if the stop cannot be
+  written, the connection status says so.
 - Every command, sent or refused, is written in the integration logs; the
   codes never are.
 
@@ -135,7 +143,9 @@ codes of the configuration.
   connections.
 - After a cut, the new tries are spaced: 10 s, 30 s, 1 min, 2 min, then
   every 5 minutes; at least one minute when the panel has no free
-  connection, five minutes for an unknown model.
+  connection, five minutes for an unknown model. A connection that drops
+  less than a minute after it opened counts as a failure (the waits grow).
+  After a command without an answer, the connection is back in about 5 s.
 - The panels that can send each change themselves do (subscription); the
   others are read every 2 seconds. Everything is read again every 10
   minutes, the faults every minute.
@@ -154,6 +164,11 @@ codes of the configuration.
   takes one byte).
 - An alarm already in progress when the integration starts does not trigger
   a scene (only the changes seen do).
+- The alarm memory stays on the panel until it is cleared at a keypad:
+  arming again an area whose memory was not cleared triggers "Bosch alarm
+  triggered" again (as in Home Assistant). Clear the memory at a keypad
+  after an alarm.
+- Frames over 8 KB are refused (the connection is restarted).
 
 ## Privacy
 

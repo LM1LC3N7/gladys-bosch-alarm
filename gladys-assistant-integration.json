@@ -95,8 +95,8 @@
         "fr": "Code utilisateur (Solution) ou code installateur (AMAX)"
       },
       "description": {
-        "en": "Solution panels: the code of a user (up to 8 digits) with the rights Gladys needs. AMAX panels: the installer code (up to 8 digits), with the automation code above. Not used by B and G Series. Kept by Gladys in its database, never shown again, sent only to the panel, never in the logs.",
-        "fr": "Centrales Solution : le code d’un utilisateur (8 chiffres au plus) avec les droits utiles à Gladys. Centrales AMAX : le code installateur (8 chiffres au plus), avec le code d’automatisation ci-dessus. Inutile pour les séries B et G. Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à la centrale, jamais dans les journaux."
+        "en": "Solution panels: the code of a user (up to 8 digits) with the rights Gladys needs. AMAX panels: the installer code (up to 8 digits), with the automation code above. Not used by B and G Series. It is sent to the panel at each login, over TLS without a check of the panel's certificate. A code refused by the panel is never sent again by itself (\"Allow a new try of the code\" button). Kept by Gladys in its database, never shown again, sent only to the panel, never in the logs.",
+        "fr": "Centrales Solution : le code d’un utilisateur (8 chiffres au plus) avec les droits utiles à Gladys. Centrales AMAX : le code installateur (8 chiffres au plus), avec le code d’automatisation ci-dessus. Inutile pour les séries B et G. Il est envoyé à la centrale à chaque connexion, par TLS sans vérification du certificat de la centrale. Un code refusé par la centrale n’est jamais renvoyé de lui-même (bouton « Autoriser un nouvel essai du code »). Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à la centrale, jamais dans les journaux."
       },
       "required": false
     },

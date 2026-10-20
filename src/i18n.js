@@ -112,6 +112,14 @@ export const T = {
     en: `The panel refused the code at login: the integration stopped and will not try it again by itself.${retryText.en}`,
     fr: `La centrale a refusé le code à la connexion : l'intégration s'est arrêtée et ne le réessaiera pas d'elle-même.${retryText.fr}`,
   },
+  codeDoubtful: {
+    en: `The panel never answered the login clearly (connection closed, no answer or an unreadable one), twice in a row: the code may have been refused. The integration stopped and will not try it again by itself.${retryText.en}`,
+    fr: `La centrale n'a jamais répondu clairement à la connexion (connexion fermée, pas de réponse ou une réponse illisible), deux fois de suite : le code a pu être refusé. L'intégration s'est arrêtée et ne le réessaiera pas d'elle-même.${retryText.fr}`,
+  },
+  stopNotSaved: {
+    en: ' Warning: this stop could not be written to /data; it is kept until the integration restarts.',
+    fr: " Attention : cet arrêt n'a pas pu être écrit dans /data ; il tient jusqu'au redémarrage de l'intégration.",
+  },
   unreachable: {
     en: (reason, seconds) => `Bosch panel unreachable (${reason}), next try in ${seconds} s.`,
     fr: (reason, seconds) =>
@@ -178,9 +186,9 @@ export const T = {
   },
   unconfirmed: {
     en: (what) =>
-      `Sent to the panel (${what}), without confirmation in time: the state is read again in 2 s.`,
+      `Sent to the panel (${what}), without confirmation in time: the connection is restarted and the state read again as soon as it is back (about 5 s).`,
     fr: (what) =>
-      `Envoyé à la centrale (${what}), sans confirmation dans les temps : l'état est relu dans 2 s.`,
+      `Envoyé à la centrale (${what}), sans confirmation dans les temps : la connexion est relancée et l'état relu dès son retour (environ 5 s).`,
   },
   commandBusy: {
     en: `Other commands took all the time of this one before its turn came${nothing.en}`,

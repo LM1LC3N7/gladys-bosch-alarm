@@ -34,15 +34,24 @@ export class FrameReader {
     this.onStatus = onStatus;
     this.onError = onError;
     this.maxFrame = maxFrame;
-    this.buffer = Buffer.alloc(0);
+    /** The bytes kept (less than one frame), as received: joined only once a frame is complete. */
+    this.chunks = [];
+    this.total = 0;
+    /** Bytes the incomplete frame needs, once its header is known. */
+    this.needed = undefined;
     this.broken = false;
   }
 
   push(chunk) {
     if (this.broken) return;
-    // What is kept between two chunks is less than one frame (bounded).
-    const data =
-      this.buffer.length === 0 ? Buffer.from(chunk) : Buffer.concat([this.buffer, chunk]);
+    this.chunks.push(Buffer.from(chunk));
+    this.total += chunk.length;
+    // A frame still incomplete: nothing copied (tiny chunks stay linear).
+    if (this.needed !== undefined && this.total < this.needed) return;
+    const data = this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.total);
+    this.chunks = [];
+    this.total = 0;
+    this.needed = undefined;
     let pos = 0;
     while (pos < data.length) {
       const type = data[pos];
@@ -58,24 +67,28 @@ export class FrameReader {
         length = data.readUInt16BE(pos + 1);
       } else {
         this.broken = true;
-        this.buffer = Buffer.alloc(0);
         this.onError(`unknown frame type 0x${type.toString(16).padStart(2, '0')}`);
         return;
       }
       if (length > this.maxFrame) {
         this.broken = true;
-        this.buffer = Buffer.alloc(0);
         this.onError('frame too long');
         return;
       }
-      if (data.length - pos < header + length) break;
+      if (data.length - pos < header + length) {
+        this.needed = header + length;
+        break;
+      }
       const payload = Buffer.from(data.subarray(pos + header, pos + header + length));
       pos += header + length;
       if (type === FRAME.STATUS) this.onStatus(payload);
       else this.onAnswer(payload);
       if (this.broken) return;
     }
-    this.buffer = Buffer.from(data.subarray(pos));
+    if (pos < data.length) {
+      this.chunks = [Buffer.from(data.subarray(pos))];
+      this.total = data.length - pos;
+    }
   }
 }
 

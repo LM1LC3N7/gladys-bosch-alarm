@@ -49,4 +49,31 @@ the notes of the version's GitHub Release.
   request in flight, any answer out of order resets the connection; bounded
   frames, names and pages, linear parsing.
 
+### Fixed
+
+- A refused code is stopped at once, even when Gladys answers slowly: "Test
+  the connection" or a new address can no longer send it again.
+- A login the panel never answers clearly (closed, silent, unreadable) twice
+  in a row stops like a refused code, instead of trying again forever.
+- An arming asked while a disarm of the same area is being handled
+  withdraws it (until its write) and goes before the disarms and outputs
+  waiting.
+- The states and scene events of a burst of updates are published within
+  1 s, even when a point keeps flapping.
+- A command without an answer brings the connection back in about 5 s and
+  the state is read again then (the message says so).
+- The frame reader is linear on tiny chunks; frames over 8 KB are refused.
+- A flood of alarm memory updates no longer delays the commands: unknown
+  priorities ignored, one grouped read, commands before background reads.
+- An unreadable state file in `/data` counts as a stop; a stop that cannot
+  be written is told in the status. "Test the connection" no longer jumps
+  a planned wait. A request is never written after its deadline. A session
+  that drops right after it came up makes the waits grow.
+
+### Changed
+
+- The user code field says it travels over TLS without a certificate check.
+- Docs: re-arming an area whose alarm memory was not cleared triggers the
+  alarm event again.
+
 [Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/commits/main
