@@ -1,6 +1,6 @@
 {
   "name": "gladys-bosch-alarm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Gladys Assistant external integration for Bosch Solution, AMAX, B and G Series alarm panels, locally over the Mode 2 automation protocol. Unofficial, not affiliated with Bosch.",
   "type": "module",

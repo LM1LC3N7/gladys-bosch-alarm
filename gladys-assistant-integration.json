@@ -6,8 +6,8 @@
     "en": "Bosch Solution, AMAX, B and G Series alarm panels, locally (Mode 2).",
     "fr": "Centrales d’alarme Bosch Solution, AMAX, séries B et G, en local (Mode 2)."
   },
-  "version": "0.1.1",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-bosch-alarm:0.1.1",
+  "version": "0.1.2",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-bosch-alarm:0.1.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-bosch-alarm/main/cover.png",
   "categories": ["security"],

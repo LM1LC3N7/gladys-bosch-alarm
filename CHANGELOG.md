@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
 ## [0.1.1] - 2026-10-20
 
 ### Added
@@ -83,5 +85,6 @@ the notes of the version's GitHub Release.
 - Docs: re-arming an area whose alarm memory was not cleared triggers the
   alarm event again.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-bosch-alarm/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-bosch-alarm/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-bosch-alarm/releases/tag/v0.1.1
