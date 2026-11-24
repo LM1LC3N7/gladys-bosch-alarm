@@ -213,3 +213,7 @@ up to date at the end of every milestone.
   cleared at a keypad triggers `alarm_triggered` again (as Home Assistant).
 - **Minor 6**: a session that drops less than 60 s after it came up counts
   as a failure: the waits grow instead of a reconnection every 10 s.
+
+## Next patch
+
+- Migration review minors: see `_lots/migration-reviews/w16-gladys-bosch-alarm-r1.md`.
