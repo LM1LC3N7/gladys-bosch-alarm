@@ -8,8 +8,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DEFAULTS, LANGUAGES } from '../src/config.js';
-import { ACTIONS, ARM_MODES, LIMITS, SCENE_ACTIONS, SCENE_TRIGGERS } from '../src/constants.js';
+import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
+import { DEFAULTS, LANGUAGES, normalizeConfig } from '../src/config.js';
+import {
+  ACTIONS,
+  ARM_MODES,
+  LIMITS,
+  POINT_KINDS,
+  SCENE_ACTIONS,
+  SCENE_TRIGGERS,
+} from '../src/constants.js';
+import { AREA_FEATURES, OUTPUT_FEATURES, PANEL_FEATURES, buildDevices } from '../src/devices.js';
+import { assertCoreDevice } from './helpers/coreFeature.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('gladys-assistant-integration.json'));
@@ -189,4 +199,31 @@ test('the trigger fields and variables are what the events carry', () => {
   }
   const modes = manifest.scene_triggers.find((t) => t.key === 'armed').fields[1];
   assert.deepEqual(values(modes), ARM_MODES);
+});
+
+test('every feature has a numeric min and max and the other core fields', () => {
+  const gladys = createFakeGladys({ selector: 'bosch-alarm' });
+  const config = normalizeConfig({
+    host: '192.168.1.40',
+    point_kinds: '2:motion, 3:smoke, 4:leak',
+  });
+  const model = {
+    panel: { model: 'B5512', firmware: '3.09', serial: '1' },
+    areas: new Map([[1, { name: 'House' }]]),
+    points: new Map([1, 2, 3, 4].map((n) => [n, { name: `Point ${n}` }])),
+    outputs: new Map([[1, { name: 'Siren' }]]),
+    alarms: new Map(),
+    faults: undefined,
+  };
+  let features = 0;
+  for (const device of buildDevices(gladys, config, model, [])) {
+    features += assertCoreDevice(device, device.external_id);
+  }
+  assert.equal(
+    features,
+    Object.keys(PANEL_FEATURES).length +
+      Object.keys(AREA_FEATURES).length +
+      POINT_KINDS.length +
+      Object.keys(OUTPUT_FEATURES).length,
+  );
 });
